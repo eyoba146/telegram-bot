@@ -870,7 +870,7 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Start callback for back button
 async def start_callback(query, context):
     welcome_text = """
-🛍️ *Welcome to ShopEasy - Your Personal Shopping Assistant!* 🛍️
+🛍️ *Welcome to Sami Shopping* 🛍️
 
 Discover amazing products, compare prices, and find exactly what you're looking for with ease!
 
