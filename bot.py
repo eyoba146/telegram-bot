@@ -4,7 +4,8 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-ADMIN_ID = 6363616486  # Replace with your admin ID
+# Replace with your admin IDs (can be one or multiple)
+ADMIN_IDS = [6363616486]  # Add your admin IDs here
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Database setup
@@ -23,9 +24,13 @@ def init_db():
     conn.commit()
     conn.close()
 
+# Check if user is admin
+def is_admin(user_id):
+    return user_id in ADMIN_IDS
+
 # Admin command handler
 async def add_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
+    if not is_admin(update.effective_user.id):
         await update.message.reply_text("🚫 You are not authorized to use this command.")
         return
 
@@ -48,6 +53,64 @@ async def add_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except (IndexError, ValueError):
         await update.message.reply_text("❌ Usage: /add <name> <price> <category>")
 
+# Admin panel command
+async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("🚫 You are not authorized to use this command.")
+        return
+        
+    admin_text = """
+🛠️ *Admin Panel* 🛠️
+
+Welcome to the admin dashboard! Here's what you can do:
+
+• /add <name> <price> <category> - Add a new product
+• /stats - View store statistics
+• /broadcast - Send message to all users (coming soon)
+    """
+    
+    # Get some stats for the admin
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM items")
+    total_items = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(DISTINCT category) FROM items")
+    total_categories = cursor.fetchone()[0]
+    conn.close()
+    
+    admin_text += f"\n📊 *Current Stats:*\n• Total Products: {total_items}\n• Categories: {total_categories}"
+    
+    await update.message.reply_text(admin_text, parse_mode='Markdown')
+
+# Stats command for admin
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        await update.message.reply_text("🚫 You are not authorized to use this command.")
+        return
+        
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM items")
+    total_items = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT COUNT(DISTINCT category) FROM items")
+    total_categories = cursor.fetchone()[0]
+    
+    cursor.execute("SELECT category, COUNT(*) FROM items GROUP BY category")
+    categories = cursor.fetchall()
+    conn.close()
+    
+    response = "📊 *Store Statistics:*\n\n"
+    response += f"• Total Products: {total_items}\n"
+    response += f"• Categories: {total_categories}\n\n"
+    response += "📂 *Items by Category:*\n"
+    
+    for category, count in categories:
+        response += f"• {category}: {count} items\n"
+    
+    await update.message.reply_text(response, parse_mode='Markdown')
+
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = """
@@ -63,6 +126,10 @@ Discover amazing products, compare prices, and find exactly what you're looking 
 
 Use the menu below to start exploring! 👇
     """
+    
+    # Add admin note if user is admin
+    if is_admin(update.effective_user.id):
+        welcome_text += "\n\n👑 *You have admin privileges!* Use /admin to access admin panel."
     
     keyboard = [
         [InlineKeyboardButton("📋 Browse All Products", callback_data='list')],
@@ -257,6 +324,10 @@ Discover amazing products, compare prices, and find exactly what you're looking 
 Use the menu below to start exploring! 👇
     """
     
+    # Add admin note if user is admin
+    if is_admin(query.from_user.id):
+        welcome_text += "\n\n👑 *You have admin privileges!* Use /admin to access admin panel."
+    
     keyboard = [
         [InlineKeyboardButton("📋 Browse All Products", callback_data='list')],
         [InlineKeyboardButton("🔍 Search Products", callback_data='search')],
@@ -275,6 +346,8 @@ def main():
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add", add_item))
+    app.add_handler(CommandHandler("admin", admin_panel))
+    app.add_handler(CommandHandler("stats", stats))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_handler))
 
