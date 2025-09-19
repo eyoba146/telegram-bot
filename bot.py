@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
 # Replace with your admin IDs (can be one or multiple)
-ADMIN_IDS = [6363616486]  # Add your admin IDs here
+ADMIN_IDS = [6363616486,1883435286]  # Add your admin IDs here
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Conversation states
@@ -77,9 +77,9 @@ def add_category(category_name):
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = """
-🛍️ *Welcome to ShopEasy - Your Personal Shopping Assistant!* 🛍️
+🛍️ *Welcome to Sami Shopping* 🛍️
 
-Discover amazing products, compare prices, and find exactly what you're looking for with ease!
+Browse products, compare prices, and find what you're looking for with ease!
 
 ✨ *Features:*
 • 📋 Browse our complete product catalog
