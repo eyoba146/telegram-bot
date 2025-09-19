@@ -1,114 +1,216 @@
 import os
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, ContextTypes,
-    CallbackQueryHandler, MessageHandler, filters
-)
+import sqlite3
 from datetime import datetime
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-# Replace with your Telegram user ID (you can get it from @userinfobot)
-ADMIN_ID = 123456789  
+ADMIN_ID = 123456789  # Replace with your admin ID
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
-# Storage for items (temporary; items will disappear if Railway restarts unless we add SQLite later)
-items = []
+# Database setup
+def init_db():
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            price REAL NOT NULL,
+            category TEXT NOT NULL,
+            added_date TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-# --- ADMIN COMMANDS ---
-
+# Admin command handler
 async def add_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ You are not authorized to add items.")
+        await update.message.reply_text("🚫 You are not authorized to use this command.")
         return
-    
-    if len(context.args) < 3:
-        await update.message.reply_text("Usage: /add <name> <price> <type>")
-        return
-    
-    name = context.args[0]
-    price = context.args[1]
-    category = context.args[2]
-    time_added = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    items.append({"name": name, "price": price, "type": category, "time": time_added})
-    await update.message.reply_text(f"✅ Added {name} (${price}) in {category} at {time_added}")
 
-# --- USER COMMANDS ---
+    try:
+        name = context.args[0]
+        price = float(context.args[1])
+        category = ' '.join(context.args[2:])
+        added_date = datetime.now().isoformat()
 
+        conn = sqlite3.connect('items.db')
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO items (name, price, category, added_date) VALUES (?, ?, ?, ?)",
+            (name, price, category, added_date)
+        )
+        conn.commit()
+        conn.close()
+
+        await update.message.reply_text("✅ Item added successfully!")
+    except (IndexError, ValueError):
+        await update.message.reply_text("❌ Usage: /add <name> <price> <category>")
+
+# Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📋 List Items", callback_data="list")],
-        [InlineKeyboardButton("🔎 Search", callback_data="search")],
-        [InlineKeyboardButton("🔠 Sort A-Z", callback_data="sort")],
-        [InlineKeyboardButton("📂 Filter by Type", callback_data="filter")]
+        [InlineKeyboardButton("📋 List Items", callback_data='list')],
+        [InlineKeyboardButton("🔎 Search", callback_data='search')],
+        [InlineKeyboardButton("🔠 Sort A-Z", callback_data='sort')],
+        [InlineKeyboardButton("📂 Filter by Type", callback_data='filter')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("👋 Welcome! Choose an option:", reply_markup=reply_markup)
+    await update.message.reply_text("🛍️ Welcome to Item Bot!", reply_markup=reply_markup)
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Button callback handler
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    
-    if query.data == "list":
-        if not items:
-            await query.edit_message_text("📭 No items available.")
-            return
-        text = "\n".join([f"{i+1}. {item['name']} - ${item['price']} ({item['type']})"
-                          for i, item in enumerate(items)])
-        await query.edit_message_text(f"📋 Items:\n{text}")
-    
-    elif query.data == "sort":
-        sorted_items = sorted(items, key=lambda x: x["name"])
-        text = "\n".join([f"{i+1}. {item['name']} - ${item['price']} ({item['type']})"
-                          for i, item in enumerate(sorted_items)])
-        await query.edit_message_text(f"🔠 Sorted A-Z:\n{text}")
-    
-    elif query.data == "filter":
-        categories = list(set([item["type"] for item in items]))
-        if not categories:
-            await query.edit_message_text("📭 No categories yet.")
-            return
-        keyboard = [[InlineKeyboardButton(cat, callback_data=f"cat_{cat}")] for cat in categories]
-        await query.edit_message_text("📂 Choose category:", reply_markup=InlineKeyboardMarkup(keyboard))
-    
-    elif query.data.startswith("cat_"):
-        cat = query.data.split("_", 1)[1]
-        filtered = [item for item in items if item["type"] == cat]
-        if not filtered:
-            await query.edit_message_text(f"📂 No items found in {cat}.")
-            return
-        text = "\n".join([f"{i+1}. {item['name']} - ${item['price']}" for i, item in enumerate(filtered)])
-        await query.edit_message_text(f"📂 {cat}:\n{text}")
-    
-    elif query.data == "search":
-        await query.edit_message_text("🔎 Send me a search term (just type it here).")
-        context.user_data["search_mode"] = True
 
+    if query.data == 'list':
+        await list_items(query, context)
+    elif query.data == 'sort':
+        await sort_items(query, context)
+    elif query.data == 'filter':
+        await filter_categories(query, context)
+    elif query.data == 'search':
+        await query.message.reply_text("🔍 Please enter your search term:")
+        context.user_data['awaiting_search'] = True
+    elif query.data.startswith('category_'):
+        category = query.data.split('_', 1)[1]
+        await show_category_items(query, context, category)
+    elif query.data == 'back':
+        await start_callback(query, context)
+
+# List all items
+async def list_items(query, context):
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, price, category FROM items")
+    items = cursor.fetchall()
+    conn.close()
+
+    if not items:
+        await query.message.edit_text("📭 No items found!")
+        return
+
+    response = "📦 All Items:\n\n"
+    for item in items:
+        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
+    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# Sort items A-Z
+async def sort_items(query, context):
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, price, category FROM items ORDER BY name")
+    items = cursor.fetchall()
+    conn.close()
+
+    if not items:
+        await query.message.edit_text("📭 No items found!")
+        return
+
+    response = "🔠 Items Sorted A-Z:\n\n"
+    for item in items:
+        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
+    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# Show categories for filtering
+async def filter_categories(query, context):
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT category FROM items")
+    categories = cursor.fetchall()
+    conn.close()
+
+    if not categories:
+        await query.message.edit_text("📭 No categories found!")
+        return
+
+    keyboard = []
+    for category in categories:
+        keyboard.append([InlineKeyboardButton(
+            f"📂 {category[0]}", callback_data=f'category_{category[0]}')])
+    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data='back')])
+
+    await query.message.edit_text(
+        "📂 Select a category:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+# Show items in specific category
+async def show_category_items(query, context, category):
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT name, price, category FROM items WHERE category = ?",
+        (category,)
+    )
+    items = cursor.fetchall()
+    conn.close()
+
+    if not items:
+        await query.message.edit_text("📭 No items in this category!")
+        return
+
+    response = f"📂 Items in {category}:\n\n"
+    for item in items:
+        response += f"• {item[0]} - ${item[1]:.2f}\n"
+
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='filter')]]
+    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# Handle search messages
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if context.user_data.get("search_mode"):
-        query = update.message.text.lower()
-        results = [item for item in items if query in item["name"].lower()]
-        if results:
-            text = "\n".join([f"{i+1}. {item['name']} - ${item['price']} ({item['type']})"
-                              for i, item in enumerate(results)])
-            await update.message.reply_text(f"🔎 Search results:\n{text}")
-        else:
-            await update.message.reply_text("❌ No items found.")
-        context.user_data["search_mode"] = False
+    if not context.user_data.get('awaiting_search'):
+        return
+
+    search_term = update.message.text.lower()
+    conn = sqlite3.connect('items.db')
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT name, price, category FROM items WHERE LOWER(name) LIKE ?",
+        (f'%{search_term}%',)
+    )
+    items = cursor.fetchall()
+    conn.close()
+
+    if not items:
+        await update.message.reply_text("🔍 No matching items found!")
+        return
+
+    response = f"🔍 Search results for '{search_term}':\n\n"
+    for item in items:
+        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+
+    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
+    await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+    context.user_data['awaiting_search'] = False
+
+# Start callback for back button
+async def start_callback(query, context):
+    keyboard = [
+        [InlineKeyboardButton("📋 List Items", callback_data='list')],
+        [InlineKeyboardButton("🔎 Search", callback_data='search')],
+        [InlineKeyboardButton("🔠 Sort A-Z", callback_data='sort')],
+        [InlineKeyboardButton("📂 Filter by Type", callback_data='filter')]
+    ]
+    await query.message.edit_text(
+        "🛍️ Welcome to Item Bot!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 def main():
-    # Get token from Railway environment variables
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    if not token:
-        print("❌ ERROR: TELEGRAM_BOT_TOKEN not set in Railway variables")
-        return
-    
-    app = Application.builder().token(token).build()
-    
+    init_db()
+    app = Application.builder().token(TOKEN).build()
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add", add_item))
-    app.add_handler(CallbackQueryHandler(button))
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_handler))
-    
-    print("🤖 Bot is running...")
+
     app.run_polling()
 
 if __name__ == "__main__":
