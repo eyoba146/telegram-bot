@@ -5,7 +5,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
 # Replace with your admin IDs (can be one or multiple)
-ADMIN_IDS = [123456789, 987654321]  # Add your admin IDs here
+ADMIN_IDS = [6363616486]  # Add your admin IDs here
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Conversation states
