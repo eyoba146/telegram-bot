@@ -50,14 +50,28 @@ async def add_item(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # Start command handler
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    welcome_text = """
+🛍️ *Welcome to ShopEasy - Your Personal Shopping Assistant!* 🛍️
+
+Discover amazing products, compare prices, and find exactly what you're looking for with ease!
+
+✨ *Features:*
+• 📋 Browse our complete product catalog
+• 🔍 Search for specific items
+• 🔠 Sort products alphabetically
+• 📂 Filter by category
+
+Use the menu below to start exploring! 👇
+    """
+    
     keyboard = [
-        [InlineKeyboardButton("📋 List Items", callback_data='list')],
-        [InlineKeyboardButton("🔎 Search", callback_data='search')],
+        [InlineKeyboardButton("📋 Browse All Products", callback_data='list')],
+        [InlineKeyboardButton("🔍 Search Products", callback_data='search')],
         [InlineKeyboardButton("🔠 Sort A-Z", callback_data='sort')],
-        [InlineKeyboardButton("📂 Filter by Type", callback_data='filter')]
+        [InlineKeyboardButton("📂 Filter by Category", callback_data='filter')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("🛍️ Welcome to Item Bot!", reply_markup=reply_markup)
+    await update.message.reply_text(welcome_text, parse_mode='Markdown', reply_markup=reply_markup)
 
 # Button callback handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -71,13 +85,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'filter':
         await filter_categories(query, context)
     elif query.data == 'search':
-        await query.message.reply_text("🔍 Please enter your search term:")
+        await query.message.reply_text("🔍 What would you like to search for? Please type your search term:")
         context.user_data['awaiting_search'] = True
     elif query.data.startswith('category_'):
         category = query.data.split('_', 1)[1]
         await show_category_items(query, context, category)
-    elif query.data == 'back':
+    elif query.data == 'back_to_menu':
         await start_callback(query, context)
+    elif query.data == 'back_to_categories':
+        await filter_categories(query, context)
 
 # List all items
 async def list_items(query, context):
@@ -88,15 +104,23 @@ async def list_items(query, context):
     conn.close()
 
     if not items:
-        await query.message.edit_text("📭 No items found!")
+        keyboard = [[InlineKeyboardButton("🏠 Back to Main Menu", callback_data='back_to_menu')]]
+        await query.message.edit_text(
+            "📭 Our catalog is currently empty. Check back soon for new products!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
-    response = "📦 All Items:\n\n"
+    response = "📦 *All Products:*\n\n"
     for item in items:
-        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+        response += f"• *{item[0]}* - ${item[1]:.2f} ({item[2]})\n"
 
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
-    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [
+        [InlineKeyboardButton("🔄 Sort A-Z", callback_data='sort')],
+        [InlineKeyboardButton("📂 Filter by Category", callback_data='filter')],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]
+    ]
+    await query.message.edit_text(response, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 # Sort items A-Z
 async def sort_items(query, context):
@@ -107,15 +131,23 @@ async def sort_items(query, context):
     conn.close()
 
     if not items:
-        await query.message.edit_text("📭 No items found!")
+        keyboard = [[InlineKeyboardButton("🏠 Back to Main Menu", callback_data='back_to_menu')]]
+        await query.message.edit_text(
+            "📭 Our catalog is currently empty. Check back soon for new products!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
-    response = "🔠 Items Sorted A-Z:\n\n"
+    response = "🔠 *Products Sorted A-Z:*\n\n"
     for item in items:
-        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+        response += f"• *{item[0]}* - ${item[1]:.2f} ({item[2]})\n"
 
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
-    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [
+        [InlineKeyboardButton("📋 View All Products", callback_data='list')],
+        [InlineKeyboardButton("📂 Filter by Category", callback_data='filter')],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]
+    ]
+    await query.message.edit_text(response, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 # Show categories for filtering
 async def filter_categories(query, context):
@@ -126,17 +158,22 @@ async def filter_categories(query, context):
     conn.close()
 
     if not categories:
-        await query.message.edit_text("📭 No categories found!")
+        keyboard = [[InlineKeyboardButton("🏠 Back to Main Menu", callback_data='back_to_menu')]]
+        await query.message.edit_text(
+            "📭 No categories available yet. Check back soon!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
     keyboard = []
     for category in categories:
         keyboard.append([InlineKeyboardButton(
             f"📂 {category[0]}", callback_data=f'category_{category[0]}')])
-    keyboard.append([InlineKeyboardButton("🔙 Back", callback_data='back')])
+    keyboard.append([InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')])
 
     await query.message.edit_text(
-        "📂 Select a category:",
+        "📂 *Select a category:*",
+        parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -152,15 +189,25 @@ async def show_category_items(query, context, category):
     conn.close()
 
     if not items:
-        await query.message.edit_text("📭 No items in this category!")
+        keyboard = [
+            [InlineKeyboardButton("📂 Back to Categories", callback_data='back_to_categories')],
+            [InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]
+        ]
+        await query.message.edit_text(
+            f"📭 No products found in '{category}' category. Check back soon!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return
 
-    response = f"📂 Items in {category}:\n\n"
+    response = f"📂 *Products in {category}:*\n\n"
     for item in items:
-        response += f"• {item[0]} - ${item[1]:.2f}\n"
+        response += f"• *{item[0]}* - ${item[1]:.2f}\n"
 
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='filter')]]
-    await query.message.edit_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [
+        [InlineKeyboardButton("📂 Back to Categories", callback_data='back_to_categories')],
+        [InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]
+    ]
+    await query.message.edit_text(response, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
 
 # Handle search messages
 async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,27 +225,47 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.close()
 
     if not items:
-        await update.message.reply_text("🔍 No matching items found!")
+        keyboard = [[InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]]
+        await update.message.reply_text(
+            f"🔍 No products found matching '{search_term}'. Try different keywords or browse our full catalog!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        context.user_data['awaiting_search'] = False
         return
 
-    response = f"🔍 Search results for '{search_term}':\n\n"
+    response = f"🔍 *Search results for '{search_term}':*\n\n"
     for item in items:
-        response += f"• {item[0]} - ${item[1]:.2f} ({item[2]})\n"
+        response += f"• *{item[0]}* - ${item[1]:.2f} ({item[2]})\n"
 
-    keyboard = [[InlineKeyboardButton("🔙 Back", callback_data='back')]]
-    await update.message.reply_text(response, reply_markup=InlineKeyboardMarkup(keyboard))
+    keyboard = [[InlineKeyboardButton("🏠 Main Menu", callback_data='back_to_menu')]]
+    await update.message.reply_text(response, parse_mode='Markdown', reply_markup=InlineKeyboardMarkup(keyboard))
     context.user_data['awaiting_search'] = False
 
 # Start callback for back button
 async def start_callback(query, context):
+    welcome_text = """
+🛍️ *Welcome to ShopEasy - Your Personal Shopping Assistant!* 🛍️
+
+Discover amazing products, compare prices, and find exactly what you're looking for with ease!
+
+✨ *Features:*
+• 📋 Browse our complete product catalog
+• 🔍 Search for specific items
+• 🔠 Sort products alphabetically
+• 📂 Filter by category
+
+Use the menu below to start exploring! 👇
+    """
+    
     keyboard = [
-        [InlineKeyboardButton("📋 List Items", callback_data='list')],
-        [InlineKeyboardButton("🔎 Search", callback_data='search')],
+        [InlineKeyboardButton("📋 Browse All Products", callback_data='list')],
+        [InlineKeyboardButton("🔍 Search Products", callback_data='search')],
         [InlineKeyboardButton("🔠 Sort A-Z", callback_data='sort')],
-        [InlineKeyboardButton("📂 Filter by Type", callback_data='filter')]
+        [InlineKeyboardButton("📂 Filter by Category", callback_data='filter')]
     ]
     await query.message.edit_text(
-        "🛍️ Welcome to Item Bot!",
+        welcome_text,
+        parse_mode='Markdown',
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
