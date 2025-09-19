@@ -1,3 +1,4 @@
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, ContextTypes,
@@ -8,7 +9,7 @@ from datetime import datetime
 # Replace with your Telegram user ID (you can get it from @userinfobot)
 ADMIN_ID = 123456789  
 
-# Storage for items (use SQLite for persistence later)
+# Storage for items (temporary; items will disappear if Railway restarts unless we add SQLite later)
 items = []
 
 # --- ADMIN COMMANDS ---
@@ -94,7 +95,13 @@ async def search_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["search_mode"] = False
 
 def main():
-    app = Application.builder().token("YOUR_TELEGRAM_BOT_TOKEN").build()
+    # Get token from Railway environment variables
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if not token:
+        print("❌ ERROR: TELEGRAM_BOT_TOKEN not set in Railway variables")
+        return
+    
+    app = Application.builder().token(token).build()
     
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add", add_item))
