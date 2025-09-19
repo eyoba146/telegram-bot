@@ -4,7 +4,7 @@ from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-ADMIN_ID = 123456789  # Replace with your admin ID
+ADMIN_ID = 6363616486  # Replace with your admin ID
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Database setup
